@@ -1,0 +1,47 @@
+一：项目结构
+appchinesechess/
+├── CMakeLists.txt
+├── main.cpp
+├── Main.qml
+├── chessboard.h / .cpp
+├── chesspiece.h / .cpp
+├── chessmanager.h / .cpp
+├── resources.qrc
+└── qml/
+    ├── StartPage.qml
+    ├── GamePage.qml
+    └── ResultDialog.qml
+
+二：C++后端逻辑
+1.全局常量
+（1）枚举Camp——阵营，PieceType——棋子类型
+（2）常量：格子大小，棋盘行/列，棋盘偏移量
+
+2.ChessBoard棋盘类：纯数据类，对外提供棋盘尺寸、图片路径、层级，供QML界面渲染，由ChessManager管理。
+
+3.ChessPiece棋子类：存储一枚棋子的所有信息，身份、阵营、位置、存活状态、图片、尺寸，同时提供坐标转换、位置控制。
+
+4.ChessManager管理器：棋盘/棋子管理、规则校验、走棋、回合切换、胜负判断、网络联机、页面跳转。
+（1）核心功能：
+ 1.初始化布局
+ 2.棋子查找
+ 3.走棋规则校验（核心算法）
+ 4.执行走棋
+ 5.页面跳转
+ 6.网络联机
+（2）信号：
+- goToGame ：跳转游戏页，- onlineStateChanged ：联机状态改变
+- turnChanged ：回合切换，- gameOver ：游戏结束，弹出胜负弹窗
+
+5类的关系
+ 1. ChessManager 聚合 ChessBoard
+ 管理器持有唯一棋盘对象。
+ 2. ChessManager 聚合多个 ChessPiece
+ 管理器用列表管理全部棋子，创建、销毁、查找、移动都由它控制。
+
+
+三：QML前端界面
+1.Main.qml 主入口、页面路由
+2.StartPage.qml 开始首页（标题、按钮、联机选项）
+3.GamePage.qml 游戏主界面（棋盘 + 所有棋子 + 拖拽交互）
+4.ResultDialog.qml 弹窗（游戏结束提示框）
