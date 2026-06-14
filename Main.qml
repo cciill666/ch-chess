@@ -1,29 +1,19 @@
 import QtQuick
 import QtQuick.Controls
+import chinesechess
 
-ApplicationWindow {
-    width: 640
-    height: 480
-    visible: true
-    title: qsTr("hello, world")
-    menuBar: MenuBar {
-        Menu {
-            title: qsTr("File")
-            MenuItem {
-                text: qsTr("&Open")
-                onTriggered: console.log("Open action triggered");
-            }
-            MenuItem {
-                text: qsTr("Exit")
-                onTriggered: Qt.quit();
-            }
+Item {
+    width: 800
+    height: 600
+    property int currentPage: 0
+
+    StartPage { visible: currentPage === 0 }
+    GamePage  { visible: currentPage === 1 }
+
+    Connections {
+        target: ChessManager
+        function onGoGamePage(){
+            currentPage = 1
         }
-    }
-
-    //Content Area
-    TextArea {
-        text: qsTr("hello, world")
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.verticalCenter: parent.verticalCenter
     }
 }

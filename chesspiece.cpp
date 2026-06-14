@@ -1,33 +1,187 @@
 #include "chesspiece.h"
+#include <QtMath>
 
-ChessPiece::ChessPiece() {}
+ChessPiece::ChessPiece(int id, Camp camp, PieceType type, QObject *parent)
+    : QObject(parent)
+    , m_id(id)
+    , m_camp(camp)
+    , m_type(type)
+    , m_alive(true)
+    , m_selected(false)
+    , m_x(0)
+    , m_y(0)
+{
+    QString normal, select;
+    const QString pathPrefix = "qrc:/images/WOOD/";
+    if (camp == Camp::Red) {
+        switch (type) {
+        case PieceType::Jiang:
+            normal = "RK.GIF";
+            select = "RKS.GIF";
+            break;
+        case PieceType::Ju:
+            normal = "RB.GIF";
+            select = "RBS.GIF";
+            break;
+        case PieceType::Ma:
+            normal = "RN.GIF";
+            select = "RNS.GIF";
+            break;
+        case PieceType::Xiang:
+            normal = "RC.GIF";
+            select = "RCS.GIF";
+            break;
+        case PieceType::Shi:
+            normal = "RA.GIF";
+            select = "RAS.GIF";
+            break;
+        case PieceType::Pao:
+            normal = "RP.GIF";
+            select = "RPS.GIF";
+            break;
+        case PieceType::Bing:
+            normal = "RR.GIF";
+            select = "RRS.GIF";
+            break;
+        default:
+            break;
+        }
+    } else {
+        switch (type) {
+        case PieceType::Shuai:
+            normal = "BK.GIF";
+            select = "BKS.GIF";
+            break;
+        case PieceType::Ju:
+            normal = "BB.GIF";
+            select = "BBS.GIF";
+            break;
+        case PieceType::Ma:
+            normal = "BN.GIF";
+            select = "BNS.GIF";
+            break;
+        case PieceType::Xiang:
+            normal = "BC.GIF";
+            select = "BCS.GIF";
+            break;
+        case PieceType::Shi:
+            normal = "BA.GIF";
+            select = "BAS.GIF";
+            break;
+        case PieceType::Pao:
+            normal = "BP.GIF";
+            select = "BPS.GIF";
+            break;
+        case PieceType::Zu:
+            normal = "OO.GIF";
+            select = "OOS.GIF";
+            break;
+        default:
+            break;
+        }
+    }
 
-ChessPiece::ChessPiece(int id, Camp camp, PieceType type, QObject *parent) {}
+    m_normalImg = pathPrefix + normal;
+    m_selectImg = pathPrefix + select;
+}
 
-int ChessPiece::pieceId() const {}
+int ChessPiece::pieceId() const
+{
+    return m_id;
+}
 
-Camp ChessPiece::camp() const {}
+Camp ChessPiece::camp() const
+{
+    return m_camp;
+}
 
-PieceType ChessPiece::pieceType() const {}
+PieceType ChessPiece::pieceType() const
+{
+    return m_type;
+}
 
-bool ChessPiece::isAlive() const {}
+bool ChessPiece::isAlive() const
+{
+    return m_alive;
+}
 
-int ChessPiece::x() const {}
+bool ChessPiece::isSelected() const
+{
+    return m_selected;
+}
 
-int ChessPiece::y() const {}
+int ChessPiece::posX() const
+{
+    return m_x;
+}
 
-int ChessPiece::width() const {}
+int ChessPiece::posY() const
+{
+    return m_y;
+}
 
-int ChessPiece::height() const {}
+int ChessPiece::pieceW() const
+{
+    return m_w;
+}
 
-int ChessPiece::zValue() const {}
+int ChessPiece::pieceH() const
+{
+    return m_h;
+}
 
-QPoint ChessPiece::logicPos() const {}
+int ChessPiece::zOrder() const
+{
+    return m_z;
+}
 
-void ChessPiece::setLogicPos(int col, int row) {}
+QUrl ChessPiece::imgSource() const
+{
+    return m_selected ? m_selectImg : m_normalImg;
+}
 
-void ChessPiece::setX(int val) {}
+QPoint ChessPiece::getLogicPos() const
+{
+    int col = qRound((m_x - BOARD_OFFSET_X) / (double)GRID_SIZE);
+    int row = qRound((m_y - BOARD_OFFSET_Y) / (double)GRID_SIZE);
+    return QPoint(col, row);
+}
 
-void ChessPiece::setY(int val) {}
+void ChessPiece::setLogicPos(int col, int row) {
+    int px = BOARD_OFFSET_X + col * GRID_SIZE - m_w / 2;
+    int py = BOARD_OFFSET_Y + row * GRID_SIZE - m_h / 2;
+    setPosX(px);
+    setPosY(py);
+}
 
-void ChessPiece::setAlive(bool ok) {}
+void ChessPiece::setPosX(int x)
+{
+    if (m_x != x) {
+        m_x = x;
+        emit posChanged();
+    }
+}
+
+void ChessPiece::setPosY(int y)
+{
+    if (m_y != y) {
+        m_y = y;
+        emit posChanged();
+    }
+}
+
+void ChessPiece::setAlive(bool alive)
+{
+    if (m_alive != alive) {
+        m_alive = alive;
+        emit aliveChanged();
+    }
+}
+
+void ChessPiece::setSelected(bool selected)
+{
+    if (m_selected != selected) {
+        m_selected = selected;
+        emit stateChanged();
+    }
+}

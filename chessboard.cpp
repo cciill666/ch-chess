@@ -1,13 +1,30 @@
 #include "chessboard.h"
 
-ChessBoard::ChessBoard() {}
+ChessBoard::ChessBoard(QObject *parent)
+    : QObject(parent)
+{
+    m_width = GRID_SIZE * COL_COUNT;
+    m_height = GRID_SIZE * ROW_COUNT;
+    m_imgUrl = QUrl("qrc:/images/WOOD.JPG");
+    m_z = 0;
+}
 
-ChessBoard::ChessBoard(QObject *parent) {}
+int ChessBoard::boardWidth() const
+{
+    return m_width;
+}
 
-int ChessBoard::width() const {}
+int ChessBoard::boardHeight() const
+{
+    return m_height;
+}
 
-int ChessBoard::height() const {}
+QUrl ChessBoard::boardImg() const
+{
+    return m_imgUrl;
+}
 
-QUrl ChessBoard::source() const {}
-
-int ChessBoard::zValue() const {}
+int ChessBoard::zOrder() const
+{
+    return m_z;
+}
