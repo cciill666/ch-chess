@@ -3,7 +3,7 @@
         <file>StartPage.qml</file>
         <file>GamePage.qml</file>
         <file>ResultDialog.qml</file>
-        <file>images/WOOD.JPG</file>
+        <file>images/WOOD/WOOD.JPG</file>
         <file>images/WOOD/BA.GIF</file>
         <file>images/WOOD/BAS.GIF</file>
         <file>images/WOOD/BB.GIF</file>

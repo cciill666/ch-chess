@@ -1,6 +1,13 @@
 #include "chesspiece.h"
 #include <QtMath>
 
+ChessPiece::ChessPiece(QObject *parent)
+    : ChessPiece(-1, Camp::Red, PieceType::Ju, parent)
+{
+
+    m_alive = false;
+}
+
 ChessPiece::ChessPiece(int id, Camp camp, PieceType type, QObject *parent)
     : QObject(parent)
     , m_id(id)
@@ -20,28 +27,28 @@ ChessPiece::ChessPiece(int id, Camp camp, PieceType type, QObject *parent)
             select = "RKS.GIF";
             break;
         case PieceType::Ju:
-            normal = "RB.GIF";
-            select = "RBS.GIF";
+            normal = "RR.GIF";
+            select = "RRS.GIF";
             break;
         case PieceType::Ma:
             normal = "RN.GIF";
             select = "RNS.GIF";
             break;
         case PieceType::Xiang:
-            normal = "RC.GIF";
-            select = "RCS.GIF";
+            normal = "RB.GIF";
+            select = "RBS.GIF";
             break;
         case PieceType::Shi:
             normal = "RA.GIF";
             select = "RAS.GIF";
             break;
         case PieceType::Pao:
-            normal = "RP.GIF";
-            select = "RPS.GIF";
+            normal = "RC.GIF";
+            select = "RCS.GIF";
             break;
         case PieceType::Bing:
-            normal = "RR.GIF";
-            select = "RRS.GIF";
+            normal = "RP.GIF";
+            select = "RPS.GIF";
             break;
         default:
             break;
@@ -53,28 +60,28 @@ ChessPiece::ChessPiece(int id, Camp camp, PieceType type, QObject *parent)
             select = "BKS.GIF";
             break;
         case PieceType::Ju:
-            normal = "BB.GIF";
-            select = "BBS.GIF";
+            normal = "BR.GIF";
+            select = "BRS.GIF";
             break;
         case PieceType::Ma:
             normal = "BN.GIF";
             select = "BNS.GIF";
             break;
         case PieceType::Xiang:
-            normal = "BC.GIF";
-            select = "BCS.GIF";
+            normal = "BB.GIF";
+            select = "BBS.GIF";
             break;
         case PieceType::Shi:
             normal = "BA.GIF";
             select = "BAS.GIF";
             break;
         case PieceType::Pao:
-            normal = "BP.GIF";
-            select = "BPS.GIF";
+            normal = "BC.GIF";
+            select = "BCS.GIF";
             break;
         case PieceType::Zu:
-            normal = "OO.GIF";
-            select = "OOS.GIF";
+            normal = "BP.GIF";
+            select = "BPS.GIF";
             break;
         default:
             break;
@@ -135,15 +142,15 @@ int ChessPiece::zOrder() const
     return m_z;
 }
 
-QUrl ChessPiece::imgSource() const
+QString ChessPiece::imgSource() const
 {
     return m_selected ? m_selectImg : m_normalImg;
 }
 
 QPoint ChessPiece::getLogicPos() const
 {
-    int col = qRound((m_x - BOARD_OFFSET_X) / (double)GRID_SIZE);
-    int row = qRound((m_y - BOARD_OFFSET_Y) / (double)GRID_SIZE);
+    int col = qRound((m_x + m_w / 2.0 - BOARD_OFFSET_X) / (double)GRID_SIZE);
+    int row = qRound((m_y + m_h / 2.0 - BOARD_OFFSET_Y) / (double)GRID_SIZE);
     return QPoint(col, row);
 }
 
@@ -185,3 +192,4 @@ void ChessPiece::setSelected(bool selected)
         emit stateChanged();
     }
 }
+

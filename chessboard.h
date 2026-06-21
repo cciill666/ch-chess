@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QObject>
-#include <QUrl>
+#include <QString>
 #include <QtQml>
 // 全局常量
 const int GRID_SIZE      = 50;
@@ -14,20 +14,21 @@ class ChessBoard : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
+    QML_SINGLETON
 
     Q_PROPERTY(int boardWidth  READ boardWidth  CONSTANT)
     Q_PROPERTY(int boardHeight READ boardHeight CONSTANT)
-    Q_PROPERTY(QUrl boardImg   READ boardImg    CONSTANT)
+    Q_PROPERTY(QString boardImg   READ boardImg    CONSTANT)
     Q_PROPERTY(int zOrder      READ zOrder      CONSTANT)
 public:
     explicit ChessBoard(QObject *parent = nullptr);
     int boardWidth() const;
     int boardHeight() const;
-    QUrl boardImg() const;
+    QString boardImg() const;
     int zOrder() const;
 private:
     int     m_width;
     int     m_height;
-    QUrl    m_imgUrl;
+    QString    m_imgUrl;
     int     m_z;
 };

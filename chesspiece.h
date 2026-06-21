@@ -3,7 +3,7 @@
 #include <QObject>
 #include <QUrl>
 #include <QPoint>
-#include <QtQml>
+#include <QString>
 #include "chessboard.h"
 // 阵营枚举
 enum class Camp {
@@ -27,7 +27,7 @@ class ChessPiece : public QObject
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(int      pieceId    READ pieceId    CONSTANT)
-    Q_PROPERTY(QUrl     imgSource  READ imgSource  NOTIFY stateChanged)
+    Q_PROPERTY(QString     imgSource  READ imgSource  NOTIFY stateChanged)
     Q_PROPERTY(int      posX       READ posX       WRITE setPosX NOTIFY posChanged)
     Q_PROPERTY(int      posY       READ posY       WRITE setPosY NOTIFY posChanged)
     Q_PROPERTY(int      pieceW     READ pieceW     CONSTANT)
@@ -36,6 +36,7 @@ class ChessPiece : public QObject
     Q_PROPERTY(bool     isAlive    READ isAlive    WRITE setAlive NOTIFY aliveChanged)
     Q_PROPERTY(bool     isSelected READ isSelected WRITE setSelected NOTIFY stateChanged)
 public:
+    explicit ChessPiece(QObject *parent = nullptr);
     explicit ChessPiece(int id, Camp camp, PieceType type, QObject *parent = nullptr);
     int         pieceId() const;
     Camp        camp() const;
@@ -47,7 +48,7 @@ public:
     int         pieceW() const;
     int         pieceH() const;
     int         zOrder() const;
-    QUrl        imgSource() const;
+    QString        imgSource() const;
     QPoint      getLogicPos() const;
     void        setLogicPos(int col, int row);
 public slots:
@@ -70,6 +71,6 @@ private:
     const int   m_w = 57;
     const int   m_h = 57;
     const int   m_z = 1;
-    QUrl        m_normalImg;
-    QUrl        m_selectImg;
+    QString        m_normalImg;
+    QString       m_selectImg;
 };
