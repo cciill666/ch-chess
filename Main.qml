@@ -1,10 +1,10 @@
-import QtQuick
-import QtQuick.Controls
-import chinesechess
+import QtQuick 2.15
+import chinesechess 1.0
 
-Item {
+Window {
     width: 800
     height: 600
+    visible: true
     property int currentPage: 0
 
     StartPage { visible: currentPage === 0 }
@@ -12,7 +12,7 @@ Item {
 
     Connections {
         target: ChessManager
-        function onGoGamePage(){
+        function onGoGamePage() {
             currentPage = 1
         }
     }
