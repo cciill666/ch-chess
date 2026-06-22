@@ -14,9 +14,16 @@ import QtQuick.Controls 2.15
          radius: 10
          color: "#fff"
          border.color: "#bbb"
+         Image {
+             anchors.fill: parent
+             source: "qrc:/images/background/result.jpg"
+             fillMode: Image.PreserveAspectCrop
+             z: 0
+         }
          Column {
              anchors.centerIn: parent
              spacing: 30
+             z: 1
              Text {
                  text: root.showText
                  font.pixelSize: 24

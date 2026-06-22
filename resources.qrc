@@ -36,5 +36,8 @@
         <file>images/WOOD/RPS.GIF</file>
         <file>images/WOOD/RR.GIF</file>
         <file>images/WOOD/RRS.GIF</file>
+        <file>images/background/start.webp</file>
+        <file>images/background/result.jpg</file>
+        <file>images/background/game.jpg</file>
     </qresource>
 </RCC>
