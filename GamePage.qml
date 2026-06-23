@@ -83,7 +83,7 @@ Rectangle {
                     let row = Math.round((pos.y - 25) / 50)
                     col = Math.max(0, Math.min(8, col))
                     row = Math.max(0, Math.min(9, row))
-                    console.log("【棋子】col=", col, "row=", row)
+                    console.log("【落子】col=", col, "row=", row)
                     ChessManager.moveSelectedPiece(col, row)
                 }
             }

@@ -15,5 +15,8 @@ Window {
         function onGoGamePage() {
             currentPage = 1
         }
+        function onGoStartPage() {
+            currentPage = 0
+        }
     }
 }
