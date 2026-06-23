@@ -2,7 +2,7 @@
 
 #include <QObject>
 #include <QString>
-#include <QtQml>
+#include <QtQml/qqmlregistration.h>
 // 全局常量
 const int GRID_SIZE      = 50;
 const int COL_COUNT      = 9;

@@ -7,14 +7,14 @@
 
 namespace {
 
-    bool isGeneral(PieceType type)
+    bool isGeneral(ChessPiece::PieceType type)
     {
-        return type == PieceType::Jiang || type == PieceType::Shuai;
+        return type == ChessPiece::PieceType::Jiang || type == ChessPiece::PieceType::Shuai;
     }
 
-    QString winnerName(Camp camp)
+    QString winnerName(ChessPiece::Camp camp)
     {
-        return camp == Camp::Red ? QStringLiteral("红方胜利") : QStringLiteral("黑方胜利");
+        return camp == ChessPiece::Camp::Red ? QStringLiteral("红方胜利") : QStringLiteral("黑方胜利");
     }
 
 }
@@ -23,23 +23,13 @@ ChessManager::ChessManager(QObject *parent)
     : QObject(parent)
     , m_board(new ChessBoard(this))
     , m_selectedPiece(nullptr)
-    , m_curTurn(Camp::Red)
+    , m_curTurn(ChessPiece::Camp::Red)
     , m_online(false)
+    , m_myCamp(ChessPiece::Camp::Red)
     , m_tcpServer(nullptr)
     , m_tcpSocket(new QTcpSocket(this))
 {
-    connect(m_tcpSocket, &QTcpSocket::readyRead, this, [this]() {
-        QDataStream ds(m_tcpSocket);
-        int cmd = -1;
-        ds >> cmd;
-        if (cmd == 0) {
-            int id = -1;
-            int x = 0;
-            int y = 0;
-            ds >> id >> x >> y;
-            syncRemoteMove(id, x, y);
-        }
-    });
+    setupSocketSignals(m_tcpSocket);
 }
 
 ChessManager::~ChessManager()
@@ -53,12 +43,17 @@ ChessBoard *ChessManager::boardObj() const
     return m_board;
 }
 
+ChessPiece *ChessManager::selectedPiece() const
+{
+    return m_selectedPiece;
+}
+
 QList<ChessPiece *> &ChessManager::pieceList()
 {
     return m_pieces;
 }
 
-Camp ChessManager::currentTurn() const
+ChessPiece::Camp ChessManager::currentTurn() const
 {
     return m_curTurn;
 }
@@ -68,9 +63,139 @@ bool ChessManager::isOnline() const
     return m_online;
 }
 
-ChessPiece *ChessManager::selectedPiece() const
+ChessPiece::Camp ChessManager::myCamp() const
 {
-    return m_selectedPiece;
+    return m_myCamp;
+}
+
+QString ChessManager::connectionStatus() const
+{
+    return m_connectionStatus;
+}
+
+void ChessManager::setOnline(bool online)
+{
+    if (m_online != online) {
+        m_online = online;
+        emit onlineChanged();
+    }
+}
+
+void ChessManager::setConnectionStatus(const QString& status)
+{
+    if (m_connectionStatus != status) {
+        m_connectionStatus = status;
+        emit connectionStatusChanged();
+    }
+}
+
+void ChessManager::setupSocketSignals(QTcpSocket* socket)
+{
+    if (!socket) return;
+
+    connect(socket, &QTcpSocket::disconnected, this, &ChessManager::onSocketDisconnected);
+    connect(socket, QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::errorOccurred),
+            this, &ChessManager::onSocketError);
+    connect(socket, &QTcpSocket::readyRead, this, &ChessManager::onSocketReadyRead);
+}
+
+void ChessManager::onSocketDisconnected()
+{
+    QTcpSocket* socket = qobject_cast<QTcpSocket*>(sender());
+    if (socket != m_tcpSocket) return;
+
+    setOnline(false);
+    setConnectionStatus(QStringLiteral("连接已断开"));
+    qDebug() << "网络连接已断开";
+}
+
+void ChessManager::onSocketError(QAbstractSocket::SocketError error)
+{
+    QTcpSocket* socket = qobject_cast<QTcpSocket*>(sender());
+    if (socket != m_tcpSocket) return;
+
+    QString errStr;
+    switch (error) {
+    case QAbstractSocket::ConnectionRefusedError:
+        errStr = QStringLiteral("连接被拒绝"); break;
+    case QAbstractSocket::RemoteHostClosedError:
+        errStr = QStringLiteral("远程主机关闭连接"); break;
+    case QAbstractSocket::HostNotFoundError:
+        errStr = QStringLiteral("主机未找到"); break;
+    case QAbstractSocket::SocketTimeoutError:
+        errStr = QStringLiteral("连接超时"); break;
+    default:
+        errStr = QStringLiteral("网络错误: ") + m_tcpSocket->errorString();
+    }
+    setConnectionStatus(errStr);
+    setOnline(false);
+    qDebug() << "网络错误:" << errStr;
+}
+
+void ChessManager::onSocketReadyRead()
+{
+    QTcpSocket* socket = qobject_cast<QTcpSocket*>(sender());
+    if (socket != m_tcpSocket) return;
+
+    QDataStream ds(socket);
+    ds.setVersion(QDataStream::Qt_6_0);
+
+    while (true) {
+
+        if (socket->bytesAvailable() < static_cast<qint64>(sizeof(int))) {
+            break;
+        }
+        int cmd = -1;
+        ds >> cmd;
+
+        if (cmd == 0) {
+
+            if (socket->bytesAvailable() < static_cast<qint64>(sizeof(int) * 3)) {
+                qDebug() << "走棋数据不完整，等待后续数据";
+                break;
+            }
+            int id = -1;
+            int x = 0;
+            int y = 0;
+            ds >> id >> x >> y;
+            syncRemoteMove(id, x, y);
+        } else if (cmd == 1) {
+            // 开始游戏命令
+            qDebug() << "客户端收到开始游戏命令，初始化棋盘";
+            initChess();
+        } else {
+            qDebug() << "未知命令:" << cmd;
+        }
+    }
+}
+
+void ChessManager::onClientConnected()
+{
+    if (!m_tcpServer) return;
+
+    // 关闭旧连接
+    if (m_tcpSocket) {
+        m_tcpSocket->disconnectFromHost();
+        m_tcpSocket->deleteLater();
+    }
+
+    m_tcpSocket = m_tcpServer->nextPendingConnection();
+    setupSocketSignals(m_tcpSocket);
+    setOnline(true);
+    setConnectionStatus(QStringLiteral("客户端已连接"));
+    m_myCamp = ChessPiece::Camp::Red;
+    emit myCampChanged();
+    qDebug() << "客户端已连接，本方为红方";
+
+    // 发送开始游戏命令给客户端
+    QDataStream ds(m_tcpSocket);
+    ds.setVersion(QDataStream::Qt_6_0);
+    ds << 1;  // cmd = 1 表示开始游戏
+    m_tcpSocket->flush();
+    qDebug() << "服务端发送开始游戏命令";
+
+    // 服务端初始化棋盘并进入游戏
+    initChess();
 }
 
 ChessPiece *ChessManager::getPieceByPos(int col, int row)
@@ -113,11 +238,11 @@ bool ChessManager::checkMoveRule(ChessPiece *piece, int dstCol, int dstRow)
     const int dy = dstRow - srcRow;
     const int adx = qAbs(dx);
     const int ady = qAbs(dy);
-    const bool isRed = piece->camp() == Camp::Red;
+    const bool isRed = piece->camp() == ChessPiece::Camp::Red;
 
     switch (piece->pieceType()) {
-    case PieceType::Jiang:
-    case PieceType::Shuai:
+    case ChessPiece::PieceType::Jiang:
+    case ChessPiece::PieceType::Shuai:
         if (dstCol < 3 || dstCol > 5) {
             return false;
         }
@@ -129,7 +254,7 @@ bool ChessManager::checkMoveRule(ChessPiece *piece, int dstCol, int dstRow)
         }
         return (adx == 1 && dy == 0) || (ady == 1 && dx == 0);
 
-    case PieceType::Shi:
+    case ChessPiece::PieceType::Shi:
         if (dstCol < 3 || dstCol > 5) {
             return false;
         }
@@ -141,7 +266,7 @@ bool ChessManager::checkMoveRule(ChessPiece *piece, int dstCol, int dstRow)
         }
         return adx == 1 && ady == 1;
 
-    case PieceType::Xiang: {
+    case ChessPiece::PieceType::Xiang: {
         if (adx != 2 || ady != 2) {
             return false;
         }
@@ -156,7 +281,7 @@ bool ChessManager::checkMoveRule(ChessPiece *piece, int dstCol, int dstRow)
         return getPieceByPos(eyeCol, eyeRow) == nullptr;
     }
 
-    case PieceType::Ma: {
+    case ChessPiece::PieceType::Ma: {
         const bool validStep = (adx == 2 && ady == 1) || (adx == 1 && ady == 2);
         if (!validStep) {
             return false;
@@ -166,7 +291,7 @@ bool ChessManager::checkMoveRule(ChessPiece *piece, int dstCol, int dstRow)
         return getPieceByPos(legCol, legRow) == nullptr;
     }
 
-    case PieceType::Ju: {
+    case ChessPiece::PieceType::Ju: {
         if (dx != 0 && dy != 0) {
             return false;
         }
@@ -184,7 +309,7 @@ bool ChessManager::checkMoveRule(ChessPiece *piece, int dstCol, int dstRow)
         return true;
     }
 
-    case PieceType::Pao: {
+    case ChessPiece::PieceType::Pao: {
         if (dx != 0 && dy != 0) {
             return false;
         }
@@ -203,8 +328,8 @@ bool ChessManager::checkMoveRule(ChessPiece *piece, int dstCol, int dstRow)
         return target == nullptr ? blockCount == 0 : blockCount == 1;
     }
 
-    case PieceType::Bing:
-        if (piece->camp() != Camp::Red) {
+    case ChessPiece::PieceType::Bing:
+        if (piece->camp() != ChessPiece::Camp::Red) {
             return false;
         }
         if (srcRow >= 5) {
@@ -212,8 +337,8 @@ bool ChessManager::checkMoveRule(ChessPiece *piece, int dstCol, int dstRow)
         }
         return (dx == 0 && dy == -1) || (ady == 0 && adx == 1);
 
-    case PieceType::Zu:
-        if (piece->camp() != Camp::Black) {
+    case ChessPiece::PieceType::Zu:
+        if (piece->camp() != ChessPiece::Camp::Black) {
             return false;
         }
         if (srcRow <= 4) {
@@ -242,48 +367,48 @@ void ChessManager::initChess()
     clearAllSelect();
     qDeleteAll(m_pieces);
     m_pieces.clear();
-    m_curTurn = Camp::Red;
+    m_curTurn = ChessPiece::Camp::Red;
 
     int id = 0;
-    auto addPiece = [&](Camp camp, PieceType type, int col, int row) {
+    auto addPiece = [&](ChessPiece::Camp camp, ChessPiece::PieceType type, int col, int row) {
         ChessPiece *piece = new ChessPiece(id++, camp, type, this);
         piece->setLogicPos(col, row);
         m_pieces.append(piece);
     };
 
-    addPiece(Camp::Black, PieceType::Ju, 0, 0);
-    addPiece(Camp::Black, PieceType::Ma, 1, 0);
-    addPiece(Camp::Black, PieceType::Xiang, 2, 0);
-    addPiece(Camp::Black, PieceType::Shi, 3, 0);
-    addPiece(Camp::Black, PieceType::Shuai, 4, 0);
-    addPiece(Camp::Black, PieceType::Shi, 5, 0);
-    addPiece(Camp::Black, PieceType::Xiang, 6, 0);
-    addPiece(Camp::Black, PieceType::Ma, 7, 0);
-    addPiece(Camp::Black, PieceType::Ju, 8, 0);
-    addPiece(Camp::Black, PieceType::Pao, 1, 2);
-    addPiece(Camp::Black, PieceType::Pao, 7, 2);
-    addPiece(Camp::Black, PieceType::Zu, 0, 3);
-    addPiece(Camp::Black, PieceType::Zu, 2, 3);
-    addPiece(Camp::Black, PieceType::Zu, 4, 3);
-    addPiece(Camp::Black, PieceType::Zu, 6, 3);
-    addPiece(Camp::Black, PieceType::Zu, 8, 3);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Ju, 0, 0);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Ma, 1, 0);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Xiang, 2, 0);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Shi, 3, 0);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Shuai, 4, 0);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Shi, 5, 0);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Xiang, 6, 0);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Ma, 7, 0);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Ju, 8, 0);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Pao, 1, 2);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Pao, 7, 2);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Zu, 0, 3);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Zu, 2, 3);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Zu, 4, 3);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Zu, 6, 3);
+    addPiece(ChessPiece::Camp::Black, ChessPiece::PieceType::Zu, 8, 3);
 
-    addPiece(Camp::Red, PieceType::Ju, 0, 9);
-    addPiece(Camp::Red, PieceType::Ma, 1, 9);
-    addPiece(Camp::Red, PieceType::Xiang, 2, 9);
-    addPiece(Camp::Red, PieceType::Shi, 3, 9);
-    addPiece(Camp::Red, PieceType::Jiang, 4, 9);
-    addPiece(Camp::Red, PieceType::Shi, 5, 9);
-    addPiece(Camp::Red, PieceType::Xiang, 6, 9);
-    addPiece(Camp::Red, PieceType::Ma, 7, 9);
-    addPiece(Camp::Red, PieceType::Ju, 8, 9);
-    addPiece(Camp::Red, PieceType::Pao, 1, 7);
-    addPiece(Camp::Red, PieceType::Pao, 7, 7);
-    addPiece(Camp::Red, PieceType::Bing, 0, 6);
-    addPiece(Camp::Red, PieceType::Bing, 2, 6);
-    addPiece(Camp::Red, PieceType::Bing, 4, 6);
-    addPiece(Camp::Red, PieceType::Bing, 6, 6);
-    addPiece(Camp::Red, PieceType::Bing, 8, 6);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Ju, 0, 9);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Ma, 1, 9);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Xiang, 2, 9);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Shi, 3, 9);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Jiang, 4, 9);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Shi, 5, 9);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Xiang, 6, 9);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Ma, 7, 9);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Ju, 8, 9);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Pao, 1, 7);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Pao, 7, 7);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Bing, 0, 6);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Bing, 2, 6);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Bing, 4, 6);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Bing, 6, 6);
+    addPiece(ChessPiece::Camp::Red, ChessPiece::PieceType::Bing, 8, 6);
 
     emit piecesChanged();
     emit turnChanged();
@@ -293,6 +418,14 @@ void ChessManager::initChess()
 void ChessManager::selectPiece(ChessPiece *piece)
 {
     if (piece == nullptr || !piece->isAlive()) {
+        return;
+    }
+
+    if (m_online && piece->camp() != m_myCamp) {
+        if (m_selectedPiece != nullptr && m_selectedPiece->camp() == m_myCamp && m_curTurn == m_myCamp) {
+            const QPoint targetPos = piece->getLogicPos();
+            moveSelectedPiece(targetPos.x(), targetPos.y());
+        }
         return;
     }
 
@@ -327,6 +460,11 @@ void ChessManager::moveSelectedPiece(int dstCol, int dstRow)
         return;
     }
 
+
+    if (m_online && !m_isRemoteSync && m_curTurn != m_myCamp) {
+        return;
+    }
+
     ChessPiece *targetPiece = getPieceByPos(dstCol, dstRow);
     if (!checkMoveRule(m_selectedPiece, dstCol, dstRow)) {
         qDebug() << "走棋规则非法";
@@ -340,9 +478,9 @@ void ChessManager::moveSelectedPiece(int dstCol, int dstRow)
             if (piece == nullptr || !piece->isAlive()) {
                 continue;
             }
-            if (piece->pieceType() == PieceType::Jiang) {
+            if (piece->pieceType() == ChessPiece::PieceType::Jiang) {
                 redGeneral = piece;
-            } else if (piece->pieceType() == PieceType::Shuai) {
+            } else if (piece->pieceType() == ChessPiece::PieceType::Shuai) {
                 blackGeneral = piece;
             }
         }
@@ -379,8 +517,13 @@ void ChessManager::moveSelectedPiece(int dstCol, int dstRow)
         }
     }
 
-    const Camp moverCamp = m_selectedPiece->camp();
+    const ChessPiece::Camp moverCamp = m_selectedPiece->camp();
     const bool capturedGeneral = targetPiece != nullptr && isGeneral(targetPiece->pieceType());
+
+    // 发送网络数据
+    if (m_online && !m_isRemoteSync) {
+        sendMoveData(m_selectedPiece->pieceId(), dstCol, dstRow);
+    }
 
     if (targetPiece != nullptr) {
         targetPiece->setAlive(false);
@@ -399,7 +542,7 @@ void ChessManager::moveSelectedPiece(int dstCol, int dstRow)
         return;
     }
 
-    m_curTurn = (m_curTurn == Camp::Red) ? Camp::Black : Camp::Red;
+    m_curTurn = (m_curTurn == ChessPiece::Camp::Red) ? ChessPiece::Camp::Black : ChessPiece::Camp::Red;
     emit turnChanged();
 }
 
@@ -412,27 +555,15 @@ void ChessManager::createServer(quint16 port)
     }
 
     m_tcpServer = new QTcpServer(this);
-    connect(m_tcpServer, &QTcpServer::newConnection, this, [this]() {
-        if (m_tcpSocket && m_tcpSocket->parent() == this) {
-            m_tcpSocket->deleteLater();
-        }
-        m_tcpSocket = m_tcpServer->nextPendingConnection();
-        connect(m_tcpSocket, &QTcpSocket::readyRead, this, [this]() {
-            QDataStream ds(m_tcpSocket);
-            int cmd = -1;
-            ds >> cmd;
-            if (cmd == 0) {
-                int id = -1;
-                int x = 0;
-                int y = 0;
-                ds >> id >> x >> y;
-                syncRemoteMove(id, x, y);
-            }
-        });
-    });
+    connect(m_tcpServer, &QTcpServer::newConnection, this, &ChessManager::onClientConnected);
 
-    m_online = m_tcpServer->listen(QHostAddress::Any, port);
-    emit onlineChanged();
+    if (m_tcpServer->listen(QHostAddress::Any, port)) {
+        setConnectionStatus(QStringLiteral("等待客户端连接..."));
+        qDebug() << "服务端正在监听端口" << port;
+    } else {
+        setConnectionStatus(QStringLiteral("创建房间失败"));
+        qDebug() << "创建房间失败:" << m_tcpServer->errorString();
+    }
 }
 
 void ChessManager::connectServer(const QString &ip, quint16 port)
@@ -440,34 +571,78 @@ void ChessManager::connectServer(const QString &ip, quint16 port)
     if (m_tcpSocket == nullptr) {
         m_tcpSocket = new QTcpSocket(this);
     }
+
+    // 断开旧连接
+    if (m_tcpSocket->state() != QAbstractSocket::UnconnectedState) {
+        m_tcpSocket->disconnectFromHost();
+    }
+
+    // 清理旧信号连接，重新连接
+    disconnect(m_tcpSocket, nullptr, this, nullptr);
+    setupSocketSignals(m_tcpSocket);
+
     connect(m_tcpSocket, &QTcpSocket::connected, this, [this]() {
-        m_online = true;
-        emit onlineChanged();
+        setOnline(true);
+        setConnectionStatus(QStringLiteral("已连接到服务器，等待开始..."));
+        m_myCamp = ChessPiece::Camp::Black;
+        emit myCampChanged();
+        qDebug() << "已连接到服务器，本方为黑方，等待开始游戏命令";
     });
+
+    setConnectionStatus(QStringLiteral("正在连接..."));
     m_tcpSocket->connectToHost(ip, port);
+}
+
+void ChessManager::disconnectNetwork()
+{
+    if (m_tcpServer) {
+        m_tcpServer->close();
+        m_tcpServer->deleteLater();
+        m_tcpServer = nullptr;
+    }
+    if (m_tcpSocket) {
+        m_tcpSocket->disconnectFromHost();
+        m_tcpSocket->deleteLater();
+        m_tcpSocket = nullptr;
+    }
+    setOnline(false);
+    setConnectionStatus(QStringLiteral("已断开"));
 }
 
 void ChessManager::sendMoveData(int id, int x, int y)
 {
     if (m_tcpSocket == nullptr || !m_tcpSocket->isOpen()) {
+        qDebug() << "发送失败: socket 未打开";
         return;
     }
     QDataStream ds(m_tcpSocket);
+    ds.setVersion(QDataStream::Qt_6_0);
     ds << 0 << id << x << y;
+    m_tcpSocket->flush();
+    qDebug() << "发送走棋数据:" << id << x << y;
 }
 
 void ChessManager::syncRemoteMove(int id, int x, int y)
 {
+    qDebug() << "收到远程走棋:" << id << x << y;
     for (ChessPiece *piece : m_pieces) {
         if (piece == nullptr || piece->pieceId() != id) {
             continue;
         }
-        const int dstCol = qRound((x + piece->pieceW() / 2.0 - BOARD_OFFSET_X) / GRID_SIZE);
-        const int dstRow = qRound((y + piece->pieceH() / 2.0 - BOARD_OFFSET_Y) / GRID_SIZE);
+        const int dstCol = x;
+        const int dstRow = y;
+        qDebug() << "远程走棋目标:" << dstCol << dstRow;
+        m_isRemoteSync = true;
         clearAllSelect();
         m_selectedPiece = piece;
         piece->setSelected(true);
         moveSelectedPiece(dstCol, dstRow);
+        m_isRemoteSync = false;
         break;
     }
+}
+
+void ChessManager::requestGoStartPage()
+{
+    emit goStartPage();
 }

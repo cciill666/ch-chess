@@ -97,12 +97,12 @@ int ChessPiece::pieceId() const
     return m_id;
 }
 
-Camp ChessPiece::camp() const
+ChessPiece::Camp ChessPiece::camp() const
 {
     return m_camp;
 }
 
-PieceType ChessPiece::pieceType() const
+ChessPiece::PieceType ChessPiece::pieceType() const
 {
     return m_type;
 }
