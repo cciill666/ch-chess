@@ -21,6 +21,7 @@ qt_add_qml_module(appchinesechess
     SOURCES chesspiece.h chesspiece.cpp
     SOURCES chessmanager.h chessmanager.cpp
     RESOURCES resources.qrc
+    SOURCES chessai.h chessai.cpp
     # SOURCES
     # RESOURCES introduce.txt
 )

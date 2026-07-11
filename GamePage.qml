@@ -1,6 +1,6 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Templates 2.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Templates
 import chinesechess 1.0
 
 Rectangle {
@@ -38,14 +38,16 @@ Rectangle {
             Text {
                 text: ChessManager.onlineState
                       ? ("本方为: " + (ChessManager.myCamp === ChessPiece.Camp.Red ? "红方" : "黑方"))
-                      : "本地对战"
+                      : ChessManager.aiMode
+                        ? "人机对战 (你执红方)"
+                        : "本地对战"
                 color: "#fff"
                 font.pixelSize: 14
             }
 
             Text {
-                text: ChessManager.connectionStatus
-                color: ChessManager.onlineState ? "#81c784" : "#ef5350"
+                text: ChessManager.aiThinking ? "AI思考中..." : ChessManager.connectionStatus
+                color: ChessManager.aiThinking ? "#ffeb3b" : (ChessManager.onlineState ? "#81c784" : "#ef5350")
                 font.pixelSize: 14
             }
         }

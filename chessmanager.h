@@ -2,11 +2,13 @@
 
 #include <QObject>
 #include <QList>
+#include <QTimer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QtQml/qqmlregistration.h>
 #include "chessboard.h"
 #include "chesspiece.h"
+#include "chessai.h"
 
 class ChessManager : public QObject
 {
@@ -20,6 +22,8 @@ class ChessManager : public QObject
     Q_PROPERTY(ChessPiece* selectedPiece READ selectedPiece NOTIFY selectChanged)
     Q_PROPERTY(ChessPiece::Camp myCamp             READ myCamp NOTIFY myCampChanged)
     Q_PROPERTY(QString connectionStatus READ connectionStatus NOTIFY connectionStatusChanged)
+    Q_PROPERTY(bool aiMode             READ isAiMode NOTIFY aiModeChanged)
+    Q_PROPERTY(bool aiThinking         READ isAiThinking NOTIFY aiThinkingChanged)
 
 public:
     explicit ChessManager(QObject *parent = nullptr);
@@ -34,9 +38,12 @@ public:
     bool        checkMoveRule(ChessPiece* piece, int dstCol, int dstRow);
     void        clearAllSelect();
     ChessPiece* selectedPiece() const;
+    bool        isAiMode() const;
+    bool        isAiThinking() const;
 
 public slots:
-    void initChess();
+    void initChess(bool resetAiMode = true);
+    void initAiChess();       // 人机对战初始化
     void selectPiece(ChessPiece* piece);
     void moveSelectedPiece(int dstCol, int dstRow);
 
@@ -58,17 +65,23 @@ signals:
     void selectChanged();
     void myCampChanged();
     void connectionStatusChanged();
+    void aiModeChanged();
+    void aiThinkingChanged();
 
 private slots:
     void onSocketDisconnected();
     void onSocketError(QAbstractSocket::SocketError error);
     void onSocketReadyRead();
     void onClientConnected();
+    void onAiTimeout();
 
 private:
     void setupSocketSignals(QTcpSocket* socket);
     void setOnline(bool online);
     void setConnectionStatus(const QString& status);
+    void setAiMode(bool enabled);
+    void setAiThinking(bool thinking);
+    void triggerAiMove();
 
     ChessBoard*        m_board;
     QList<ChessPiece*>m_pieces;
@@ -80,4 +93,10 @@ private:
     bool               m_isRemoteSync = false;
     QTcpServer*        m_tcpServer;
     QTcpSocket*        m_tcpSocket;
+
+    // AI相关
+    ChessAI*           m_ai = nullptr;
+    bool               m_aiMode = false;
+    bool               m_aiThinking = false;
+    QTimer*            m_aiTimer = nullptr;
 };

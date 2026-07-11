@@ -1,5 +1,5 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick
+import QtQuick.Controls
 import chinesechess 1.0
 
 Rectangle {
@@ -28,6 +28,13 @@ Rectangle {
             width: 220
             height: 50
             onClicked: ChessManager.initChess()
+        }
+
+        Button {
+            text: "人机对战"
+            width: 220
+            height: 50
+            onClicked: ChessManager.initAiChess()
         }
 
         // 联机区域

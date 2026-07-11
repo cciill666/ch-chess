@@ -28,8 +28,15 @@ ChessManager::ChessManager(QObject *parent)
     , m_myCamp(ChessPiece::Camp::Red)
     , m_tcpServer(nullptr)
     , m_tcpSocket(new QTcpSocket(this))
+    , m_ai(new ChessAI(this))
+    , m_aiTimer(new QTimer(this))
 {
     setupSocketSignals(m_tcpSocket);
+
+    // 延迟500ms后执行AI走棋，让UI有时间更新
+    m_aiTimer->setSingleShot(true);
+    m_aiTimer->setInterval(500);
+    connect(m_aiTimer, &QTimer::timeout, this, &ChessManager::onAiTimeout);
 }
 
 ChessManager::~ChessManager()
@@ -86,6 +93,32 @@ void ChessManager::setConnectionStatus(const QString& status)
     if (m_connectionStatus != status) {
         m_connectionStatus = status;
         emit connectionStatusChanged();
+    }
+}
+
+bool ChessManager::isAiMode() const
+{
+    return m_aiMode;
+}
+
+bool ChessManager::isAiThinking() const
+{
+    return m_aiThinking;
+}
+
+void ChessManager::setAiMode(bool enabled)
+{
+    if (m_aiMode != enabled) {
+        m_aiMode = enabled;
+        emit aiModeChanged();
+    }
+}
+
+void ChessManager::setAiThinking(bool thinking)
+{
+    if (m_aiThinking != thinking) {
+        m_aiThinking = thinking;
+        emit aiThinkingChanged();
     }
 }
 
@@ -194,7 +227,7 @@ void ChessManager::onClientConnected()
     m_tcpSocket->flush();
     qDebug() << "服务端发送开始游戏命令";
 
-    // 服务端初始化棋盘并进入游戏
+    // 初始化棋盘并进入游戏
     initChess();
 }
 
@@ -362,8 +395,13 @@ void ChessManager::clearAllSelect()
     emit selectChanged();
 }
 
-void ChessManager::initChess()
+void ChessManager::initChess(bool resetAiMode)
 {
+    if (resetAiMode) {
+        setAiMode(false);
+    }
+    setAiThinking(false);
+    m_aiTimer->stop();
     clearAllSelect();
     qDeleteAll(m_pieces);
     m_pieces.clear();
@@ -415,9 +453,68 @@ void ChessManager::initChess()
     emit goGamePage();
 }
 
+void ChessManager::initAiChess()
+{
+    m_myCamp = ChessPiece::Camp::Red;
+    m_ai->setAiCamp(ChessPiece::Camp::Black);
+    initChess(false);  // 不重置AI模式
+    setAiMode(true);
+    emit myCampChanged();
+    setConnectionStatus(QStringLiteral("人机对战 - 你执红方"));
+}
+
+void ChessManager::triggerAiMove()
+{
+    if (!m_aiMode || m_aiThinking) return;
+    if (m_curTurn != m_ai->aiCamp()) return;
+
+    setAiThinking(true);
+    setConnectionStatus(QStringLiteral("AI 思考中..."));
+    m_aiTimer->start();
+}
+
+void ChessManager::onAiTimeout()
+{
+    if (!m_aiMode || !m_aiThinking) return;
+
+    AiMove bestMove = m_ai->findBestMove(m_pieces, m_curTurn);
+
+    if (bestMove.fromId < 0) {
+        setAiThinking(false);
+        setConnectionStatus(QStringLiteral("AI 无可用走法"));
+        return;
+    }
+
+    // 找到要移动的棋子
+    for (ChessPiece *piece : m_pieces) {
+        if (piece && piece->isAlive() && piece->pieceId() == bestMove.fromId) {
+            clearAllSelect();
+            m_selectedPiece = piece;
+            piece->setSelected(true);
+            moveSelectedPiece(bestMove.toCol, bestMove.toRow);
+            break;
+        }
+    }
+
+    setAiThinking(false);
+    setConnectionStatus(QStringLiteral("人机对战 - 你执红方"));
+}
+
 void ChessManager::selectPiece(ChessPiece *piece)
 {
     if (piece == nullptr || !piece->isAlive()) {
+        return;
+    }
+
+    // AI模式下，不允许直接选中AI方的棋子（但允许吃子）
+    if (m_aiMode && piece->camp() == m_ai->aiCamp()) {
+        if (m_selectedPiece == nullptr || m_selectedPiece->camp() != m_curTurn) {
+            return;
+        }
+    }
+
+    // AI思考中不允许操作
+    if (m_aiThinking) {
         return;
     }
 
@@ -544,6 +641,11 @@ void ChessManager::moveSelectedPiece(int dstCol, int dstRow)
 
     m_curTurn = (m_curTurn == ChessPiece::Camp::Red) ? ChessPiece::Camp::Black : ChessPiece::Camp::Red;
     emit turnChanged();
+
+    // AI模式：轮到AI走棋时触发AI
+    if (m_aiMode && m_curTurn == m_ai->aiCamp()) {
+        triggerAiMove();
+    }
 }
 
 void ChessManager::createServer(quint16 port)
@@ -644,5 +746,8 @@ void ChessManager::syncRemoteMove(int id, int x, int y)
 
 void ChessManager::requestGoStartPage()
 {
+    setAiMode(false);
+    setAiThinking(false);
+    m_aiTimer->stop();
     emit goStartPage();
 }
