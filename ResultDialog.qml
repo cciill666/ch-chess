@@ -35,7 +35,7 @@ Rectangle {
             Button {
                 text: "关闭"
                 width: 110
-                onClicked: root.visible = false
+                onClicked: root.close()
             }
             Button {
                 text: "返回首页"

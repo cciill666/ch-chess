@@ -106,6 +106,26 @@ bool ChessManager::isAiThinking() const
     return m_aiThinking;
 }
 
+bool ChessManager::canUndo() const
+{
+    if (m_moveHistory.isEmpty()) {
+        return false;
+    }
+
+    // 人机模式：上一步必须是AI走的（即当前轮到玩家时才能悔）
+    if (m_aiMode) {
+        return m_moveHistory.last().moverCamp == m_ai->aiCamp();
+    }
+
+    // 联机模式：上一步是自己走的时才允许悔棋（即自己刚落完子，想撤回自己的步）
+    if (m_online) {
+        return m_moveHistory.last().moverCamp == m_myCamp;
+    }
+
+    // 本地对战：只要有走棋记录即可
+    return true;
+}
+
 void ChessManager::setAiMode(bool enabled)
 {
     if (m_aiMode != enabled) {
@@ -196,6 +216,20 @@ void ChessManager::onSocketReadyRead()
             // 开始游戏命令
             qDebug() << "客户端收到开始游戏命令，初始化棋盘";
             initChess();
+        } else if (cmd == 2) {
+            // 收到悔棋请求
+            qDebug() << "收到对方悔棋请求";
+            emit undoRequested();
+        } else if (cmd == 3) {
+            // 收到悔棋响应
+            if (socket->bytesAvailable() < static_cast<qint64>(sizeof(int))) {
+                qDebug() << "悔棋响应数据不完整，等待后续数据";
+                break;
+            }
+            int agree = 0;
+            ds >> agree;
+            qDebug() << "收到悔棋响应:" << (agree ? "同意" : "拒绝");
+            emit undoResponded(agree == 1);
         } else {
             qDebug() << "未知命令:" << cmd;
         }
@@ -406,6 +440,7 @@ void ChessManager::initChess(bool resetAiMode)
     qDeleteAll(m_pieces);
     m_pieces.clear();
     m_curTurn = ChessPiece::Camp::Red;
+    m_moveHistory.clear();
 
     int id = 0;
     auto addPiece = [&](ChessPiece::Camp camp, ChessPiece::PieceType type, int col, int row) {
@@ -450,6 +485,7 @@ void ChessManager::initChess(bool resetAiMode)
 
     emit piecesChanged();
     emit turnChanged();
+    emit canUndoChanged();
     emit goGamePage();
 }
 
@@ -617,6 +653,23 @@ void ChessManager::moveSelectedPiece(int dstCol, int dstRow)
     const ChessPiece::Camp moverCamp = m_selectedPiece->camp();
     const bool capturedGeneral = targetPiece != nullptr && isGeneral(targetPiece->pieceType());
 
+    // 记录走棋信息，用于悔棋
+    const QPoint srcPos = m_selectedPiece->getLogicPos();
+    MoveRecord record;
+    record.pieceId = m_selectedPiece->pieceId();
+    record.fromCol = srcPos.x();
+    record.fromRow = srcPos.y();
+    record.toCol = dstCol;
+    record.toRow = dstRow;
+    record.moverCamp = moverCamp;
+    if (targetPiece != nullptr) {
+        record.hadCapture = true;
+        record.capturedId = targetPiece->pieceId();
+        record.capturedCamp = targetPiece->camp();
+        record.capturedType = targetPiece->pieceType();
+    }
+    m_moveHistory.append(record);
+
     // 发送网络数据
     if (m_online && !m_isRemoteSync) {
         sendMoveData(m_selectedPiece->pieceId(), dstCol, dstRow);
@@ -641,6 +694,7 @@ void ChessManager::moveSelectedPiece(int dstCol, int dstRow)
 
     m_curTurn = (m_curTurn == ChessPiece::Camp::Red) ? ChessPiece::Camp::Black : ChessPiece::Camp::Red;
     emit turnChanged();
+    emit canUndoChanged();
 
     // AI模式：轮到AI走棋时触发AI
     if (m_aiMode && m_curTurn == m_ai->aiCamp()) {
@@ -724,6 +778,76 @@ void ChessManager::sendMoveData(int id, int x, int y)
     qDebug() << "发送走棋数据:" << id << x << y;
 }
 
+void ChessManager::requestUndo()
+{
+    if (!m_online || m_tcpSocket == nullptr || !m_tcpSocket->isOpen()) {
+        return;
+    }
+    QDataStream ds(m_tcpSocket);
+    ds.setVersion(QDataStream::Qt_6_0);
+    ds << 2;  // cmd=2 请求悔棋
+    m_tcpSocket->flush();
+    qDebug() << "发送悔棋请求";
+}
+
+void ChessManager::respondToUndo(bool agree)
+{
+    if (!m_online || m_tcpSocket == nullptr || !m_tcpSocket->isOpen()) {
+        return;
+    }
+    QDataStream ds(m_tcpSocket);
+    ds.setVersion(QDataStream::Qt_6_0);
+    ds << 3 << (agree ? 1 : 0);  // cmd=3 响应悔棋
+    m_tcpSocket->flush();
+    qDebug() << "发送悔棋响应:" << (agree ? "同意" : "拒绝");
+
+    // 如果同意，本地先执行悔棋
+    if (agree) {
+        doOnlineUndo();
+    }
+}
+
+void ChessManager::doOnlineUndo()
+{
+    if (m_moveHistory.isEmpty()) {
+        return;
+    }
+
+    MoveRecord record = m_moveHistory.takeLast();
+    bool listChanged = false;
+
+    // 恢复移动棋子的位置
+    for (ChessPiece *piece : m_pieces) {
+        if (piece && piece->pieceId() == record.pieceId) {
+            piece->setLogicPos(record.fromCol, record.fromRow);
+            break;
+        }
+    }
+
+    // 恢复被吃的棋子
+    if (record.hadCapture) {
+        ChessPiece *restored = new ChessPiece(record.capturedId, record.capturedCamp,
+                                              record.capturedType, this);
+        restored->setLogicPos(record.toCol, record.toRow);
+        restored->setAlive(true);
+        m_pieces.append(restored);
+        listChanged = true;
+    }
+
+    // 回合恢复为走棋方
+    m_curTurn = record.moverCamp;
+
+    clearAllSelect();
+
+    if (listChanged) {
+        emit piecesChanged();
+    }
+    emit turnChanged();
+    emit canUndoChanged();
+
+    qDebug() << "联机悔棋执行完成，回合恢复为:" << (m_curTurn == ChessPiece::Camp::Red ? "红方" : "黑方");
+}
+
 void ChessManager::syncRemoteMove(int id, int x, int y)
 {
     qDebug() << "收到远程走棋:" << id << x << y;
@@ -746,8 +870,119 @@ void ChessManager::syncRemoteMove(int id, int x, int y)
 
 void ChessManager::requestGoStartPage()
 {
+    // 停止AI相关
     setAiMode(false);
     setAiThinking(false);
     m_aiTimer->stop();
+
+    // 清理棋盘和走棋状态
+    clearAllSelect();
+    m_moveHistory.clear();
+    qDeleteAll(m_pieces);
+    m_pieces.clear();
+    m_curTurn = ChessPiece::Camp::Red;
+
+    // 断开联机
+    disconnectNetwork();
+
+    emit piecesChanged();
+    emit turnChanged();
+    emit canUndoChanged();
     emit goStartPage();
+}
+
+void ChessManager::undoMove()
+{
+    if (!canUndo()) {
+        return;
+    }
+
+    // 停止AI计时器，防止悔棋后AI立即走棋
+    m_aiTimer->stop();
+    setAiThinking(false);
+
+    bool listChanged = false;
+
+    if (m_aiMode) {
+        // 人机模式：撤销两步（AI一步 + 玩家一步），回到玩家上一次落子前的状态
+        for (int i = 0; i < 2 && !m_moveHistory.isEmpty(); ++i) {
+            MoveRecord record = m_moveHistory.takeLast();
+
+            // 恢复移动棋子的位置
+            for (ChessPiece *piece : m_pieces) {
+                if (piece && piece->pieceId() == record.pieceId) {
+                    piece->setLogicPos(record.fromCol, record.fromRow);
+                    break;
+                }
+            }
+
+            // 恢复被吃的棋子
+            if (record.hadCapture) {
+                ChessPiece *restored = new ChessPiece(record.capturedId, record.capturedCamp,
+                                                      record.capturedType, this);
+                restored->setLogicPos(record.toCol, record.toRow);
+                restored->setAlive(true);
+                m_pieces.append(restored);
+                listChanged = true;
+            }
+        }
+        // 悔棋后轮到玩家
+        m_curTurn = m_myCamp;
+    } else if (m_online) {
+        // 联机模式
+        MoveRecord record = m_moveHistory.takeLast();
+
+        for (ChessPiece *piece : m_pieces) {
+            if (piece && piece->pieceId() == record.pieceId) {
+                piece->setLogicPos(record.fromCol, record.fromRow);
+                break;
+            }
+        }
+
+        if (record.hadCapture) {
+            ChessPiece *restored = new ChessPiece(record.capturedId, record.capturedCamp,
+                                                  record.capturedType, this);
+            restored->setLogicPos(record.toCol, record.toRow);
+            restored->setAlive(true);
+            m_pieces.append(restored);
+            listChanged = true;
+        }
+
+        // 撤销自己的步后，回合恢复为自己
+        m_curTurn = m_myCamp;
+    } else {
+        // 本地对战模式
+        MoveRecord record = m_moveHistory.takeLast();
+
+        for (ChessPiece *piece : m_pieces) {
+            if (piece && piece->pieceId() == record.pieceId) {
+                piece->setLogicPos(record.fromCol, record.fromRow);
+                break;
+            }
+        }
+
+        if (record.hadCapture) {
+            ChessPiece *restored = new ChessPiece(record.capturedId, record.capturedCamp,
+                                                  record.capturedType, this);
+            restored->setLogicPos(record.toCol, record.toRow);
+            restored->setAlive(true);
+            m_pieces.append(restored);
+            listChanged = true;
+        }
+
+        // 恢复为走棋方的回合
+        m_curTurn = record.moverCamp;
+    }
+
+    clearAllSelect();
+
+    if (listChanged) {
+        emit piecesChanged();
+    }
+    emit turnChanged();
+    emit canUndoChanged();
+
+    if (m_aiMode) {
+        setConnectionStatus(QStringLiteral("人机对战 - 你执红方"));
+    }
 }
