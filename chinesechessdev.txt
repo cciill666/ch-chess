@@ -21,7 +21,6 @@ chinesechess/
 ├── resources.qrc
 ├── main.cpp
 │
-
 ├── chessboard.h/cpp     # 棋盘数据类
 ├── chesspiece.h/cpp     # 棋子数据类
 ├── chessmanager.h/cpp   # 游戏管理器（核心）
