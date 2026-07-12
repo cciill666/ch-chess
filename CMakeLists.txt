@@ -1,8 +1,6 @@
-# cmake_minimum_required(VERSION 4.1.1)
-# set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "d0edc3af-4c50-42ea-a356-e2862fe7a444")
-cmake_minimum_required(VERSION 4.1.1)
-# set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-# set(CMAKE_CXX_MODULE_STD ON)
+set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "d0edc3af-4c50-42ea-a356-e2862fe7a444")
+cmake_minimum_required(VERSION 4.3.2)
+
 set(CMAKE_AUTORCC ON)
 
 project(chinesechess VERSION 0.1 LANGUAGES CXX)

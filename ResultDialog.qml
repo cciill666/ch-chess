@@ -35,7 +35,7 @@ Rectangle {
             Button {
                 text: "关闭"
                 width: 110
-                onClicked: root.close()
+                onClicked: Qt.quit()
             }
             Button {
                 text: "返回首页"
