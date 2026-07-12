@@ -18,10 +18,10 @@ qt_add_qml_module(appchinesechess
     SOURCES chessboard.h chessboard.cpp
     SOURCES chesspiece.h chesspiece.cpp
     SOURCES chessmanager.h chessmanager.cpp
-    RESOURCES resources.qrc
     SOURCES chessai.h chessai.cpp
-    # SOURCES
-    # RESOURCES introduce.txt
+    RESOURCES resources.qrc
+    RESOURCES chinesechessdev.txt
+
 )
 target_compile_features(appchinesechess PRIVATE cxx_std_23)
 target_link_libraries(appchinesechess
